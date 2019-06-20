@@ -15,6 +15,8 @@ import org.apache.kafka.streams.kstream.Serialized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
+
 import static design.brainbox.util.SimpleJson.parse;
 
 public class RatingStats extends KafkaApp
@@ -27,6 +29,21 @@ public class RatingStats extends KafkaApp
         app.start();
     }
 
+    private Float friendlyDivision(Number numerator, Number denominator) {
+        Float n = numerator.floatValue();
+        Float d = denominator.floatValue();
+
+        if (n.isInfinite() || n.isNaN() || d.isInfinite() || d.isNaN()) {
+            return 0.0f;
+        }
+
+        Float result = n / d;
+        if (result.isNaN() || result.isInfinite()) {
+            return 0.0f;
+        }
+        return result;
+    }
+
     @Override
     protected void buildTopology(StreamsBuilder builder)
     {
@@ -37,7 +54,7 @@ public class RatingStats extends KafkaApp
                 Consumed.with(Serdes.String(), Serdes.String()))
                 .selectKey((key, value) -> {
                     SimpleJson json = parse(value);
-                    return String.format("%s-%s", json.getString("user_id"), json.getString("book_id"));
+                    return String.join("-", Arrays.asList(json.getString("user_id"), json.getString("book_id")));
                 });
 
         userBookRatingActions
@@ -74,24 +91,51 @@ public class RatingStats extends KafkaApp
 
 
         KTable<String, Float> userRatingAverages
-                = userRatingSums.join(userRatingCounts, (sum, count) -> sum.floatValue() / count.floatValue());
+                = userRatingSums.join(userRatingCounts, this::friendlyDivision);
 
         userRatingAverages
                 .mapValues((readOnlyKey, value) -> value.toString())
                 .toStream()
                 .to("user-rating-averages");
 
-//
-//        // by book
-//        KGroupedStream<String, String> bookRatings = builder.stream("book-rating-user-actions",
-//                Consumed.with(Serdes.String(), Serdes.String()))
-//                .selectKey((key, value) -> parse(value).getString("book_id"))
-//                .groupByKey();
-//
-//        KTable<String, Long> bookRatingCounts = bookRatings.count();
-//        bookRatingCounts.toStream().mapValues((readOnlyKey, value) -> value.toString())
-//                .to("book-rating-counts");
+        /**
+         * By Book
+         *        .--.                   .---.
+         *    .---|__|           .-.     |~~~|
+         * .--|===|--|_          |_|     |~~~|--.
+         * |  |===|  |'\     .---!~|  .--|   |--|
+         * |%%|   |  |.'\    |===| |--|%%|   |  |
+         * |%%|   |  |\.'\   |   | |__|  |   |  |
+         * |  |   |  | \  \  |===| |==|  |   |  |
+         * |  |   |__|  \.'\ |   |_|__|  |~~~|__|
+         * |  |===|--|   \.'\|===|~|--|%%|~~~|--|
+         * ^--^---'--^    `-'`---^-^--^--^---'--' hjw
+         */
+        KGroupedTable<String, String> currentBookRatings = currentRatings.groupBy((key, value) -> KeyValue.pair(parse(value).getString("book_id"), value),
+                Serialized.with(Serdes.String(), Serdes.String()));
 
+        KTable<String, Long> bookRatingCounts = currentBookRatings.count();
+
+        bookRatingCounts.
+                toStream()
+                .mapValues((readOnlyKey, value) -> value.toString())
+                .to("book-rating-counts");
+
+        KTable<String, Long> bookRatingSums = currentBookRatings.aggregate(
+                () -> 0L,
+                (key, value, aggregate) -> aggregate + parse(value).getNumber("rating").longValue(),
+                (key, value, aggregate) -> aggregate - parse(value).getNumber("rating").longValue(),
+                Materialized.with(Serdes.String(), Serdes.Long())
+        );
+
+        KTable<String, Float> bookRatingAverages =
+                bookRatingSums
+                        .join(bookRatingCounts, this::friendlyDivision);
+
+        bookRatingAverages
+                .mapValues((readOnlyKey, value) -> value.toString())
+                .toStream()
+                .to("book-rating-averages");
 
     }
 }
