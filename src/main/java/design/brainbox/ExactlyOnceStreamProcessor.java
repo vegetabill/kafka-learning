@@ -10,7 +10,6 @@ import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KGroupedStream;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
-import org.apache.kafka.streams.kstream.Printed;
 import org.apache.kafka.streams.kstream.Produced;
 import org.apache.kafka.streams.kstream.Serialized;
 import org.slf4j.Logger;
@@ -51,11 +50,7 @@ public class ExactlyOnceStreamProcessor extends KafkaStreamsApp
         KTable<String, JsonNode> customerBalances =  customerTransactions
                 .aggregate(
                         () -> emptyCustomerRecord,
-                        (key, value, aggregate) -> {
-                            logger.info(value.getClass().getName() + " aggregating: " + value.toString());
-                            return updatedRecord(value, aggregate);
-//                            return value.toString();
-                        },
+                        (key, value, aggregate) -> updatedRecord(value, aggregate),
                         Materialized.with(Serdes.String(), JSON_SERDE));
 
         customerBalances

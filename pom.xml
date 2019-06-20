@@ -61,7 +61,7 @@
                     <archive>
                         <manifest>
                             <addClasspath>true</addClasspath>
-                            <mainClass>com.github.simplesteph.udemy.kafka.streams.StreamsStarterApp</mainClass>
+                            <mainClass>design.brainbox.RatingStats</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

@@ -1,12 +1,9 @@
 package design.brainbox;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import jdk.internal.util.EnvUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.connect.json.JsonDeserializer;
 import org.apache.kafka.connect.json.JsonSerializer;
 import org.apache.kafka.streams.KafkaStreams;
@@ -80,7 +77,7 @@ public abstract class KafkaStreamsApp
     }
 
     protected String getBootstrapServer() {
-        String bootstrapServer = EnvUtils.getEnvVar("BOOTSTRAP_SERVER");
+        String bootstrapServer = System.getenv("BOOTSTRAP_SERVER");
 
         if (bootstrapServer != null && bootstrapServer.length() > 0) {
             return bootstrapServer;
