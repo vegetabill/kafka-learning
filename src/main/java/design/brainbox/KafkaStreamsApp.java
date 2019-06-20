@@ -1,8 +1,14 @@
 package design.brainbox;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jdk.internal.util.EnvUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.connect.json.JsonDeserializer;
+import org.apache.kafka.connect.json.JsonSerializer;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
@@ -64,6 +70,8 @@ public abstract class KafkaStreamsApp
     protected void overrideConfig(Properties config) {
 
     }
+
+    public static final Serde<JsonNode> JSON_SERDE = Serdes.serdeFrom(new JsonSerializer(), new JsonDeserializer());
 
     protected abstract void buildTopology(StreamsBuilder builder);
 

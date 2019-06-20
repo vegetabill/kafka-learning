@@ -1,20 +1,23 @@
 package design.brainbox;
 
-import design.brainbox.util.SimpleJson;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KGroupedStream;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.Printed;
+import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.Serialized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sun.java2d.pipe.SpanShapeRenderer;
 
-import java.text.ParseException;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
+import java.util.Properties;
 
 public class ExactlyOnceStreamProcessor extends KafkaStreamsApp
 {
@@ -25,65 +28,54 @@ public class ExactlyOnceStreamProcessor extends KafkaStreamsApp
         processor.start();
     }
 
-    public String extractMessageTimestamp(String message) {
-        return SimpleJson.parse(message).getString("time");
-    }
-
-    public Date toDate(String s) {
-        try
-        {
-            return ExactlyOnceProducer.DATE_FORMAT.parse(s);
-        }
-        catch (ParseException e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public String toDateString(Date d) {
-        return ExactlyOnceProducer.DATE_FORMAT.format(d);
-    }
-
-    public String maxDateString(String s1, String s2) {
-        Date d1 = toDate(s1);
-        Date d2 = toDate(s2);
-        if (d1.compareTo(d2) > 0) {
-            return toDateString(d1);
-        } else {
-            return toDateString(d2);
-        }
+    public JsonNode buildJson(Integer count, Integer balance, Date date) {
+        ObjectNode record = JsonNodeFactory.instance.objectNode();
+        record.put("count", count);
+        record.put("balance", balance);
+        record.put("time", date.getTime());
+        return record;
     }
 
     @Override
     protected void buildTopology(StreamsBuilder builder)
     {
 
-        KGroupedStream<String, String> customerTransactions = builder.stream(ExactlyOnceProducer.TOPIC,
-                Consumed.with(Serdes.String(), Serdes.String()))
-                .groupByKey();
 
-        KTable<String, Long> customerBalances =  customerTransactions
+        KGroupedStream<String, JsonNode> customerTransactions =
+                builder.stream(ExactlyOnceProducer.TOPIC,
+                Consumed.with(Serdes.String(), JSON_SERDE))
+                .groupByKey(Serialized.with(Serdes.String(), JSON_SERDE));
+
+        JsonNode emptyCustomerRecord = buildJson(1, 0, new Date(0));
+
+        KTable<String, JsonNode> customerBalances =  customerTransactions
                 .aggregate(
-                        () -> 0L,
-                        (key, value, aggregate) -> aggregate + SimpleJson.parse(value).getNumber("amount").intValue(),
-                        Materialized.with(Serdes.String(), Serdes.Long()));
-
-        KTable<String, String> customerMostRecentTransactions = customerTransactions.aggregate(
-                () -> toDateString(new Date(0)),
-                (key, value, previousDateString) -> {
-                    logger.info("aggregating data: " + value);
-                    return maxDateString(extractMessageTimestamp(value), previousDateString);
-                },
-                Materialized.with(Serdes.String(), Serdes.String())
-        );
-
-        customerMostRecentTransactions
-                .toStream()
-                .to("customer-most-recent-transactions");
+                        () -> emptyCustomerRecord,
+                        (key, value, aggregate) -> {
+                            logger.info(value.getClass().getName() + " aggregating: " + value.toString());
+                            return updatedRecord(value, aggregate);
+//                            return value.toString();
+                        },
+                        Materialized.with(Serdes.String(), JSON_SERDE));
 
         customerBalances
-                .mapValues((readOnlyKey, value) -> value.toString())
                 .toStream()
-                .to("bank-account-balances");
+                .to("account-status-json",
+                        Produced.with(Serdes.String(), JSON_SERDE));
+    }
+
+    private JsonNode updatedRecord(JsonNode transaction, JsonNode balance)
+    {
+        Integer newCount = balance.get("count").asInt() + 1;
+        Integer newBalance = transaction.get("amount").asInt() + balance.get("balance").asInt();
+        Long processingMillis = Math.max(transaction.get("time").asLong(), balance.get("time").asLong());
+        return buildJson(newCount, newBalance, new Date(processingMillis));
+    }
+
+    @Override
+    protected void overrideConfig(Properties config)
+    {
+        super.overrideConfig(config);
+        config.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE);
     }
 }

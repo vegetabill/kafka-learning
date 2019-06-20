@@ -1,11 +1,12 @@
 package design.brainbox;
 
 
-import design.brainbox.util.SimpleJson;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jdk.internal.util.EnvUtils;
 import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.serialization.Serdes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,16 +14,14 @@ import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class ExactlyOnceProducer
 {
     private static final Logger logger = LoggerFactory.getLogger(ExactlyOnceProducer.class);
-    public static final String TOPIC = "bank-account-transactions-v2";
+    public static final String TOPIC = "bank-account-transactions-v4";
 
     private static String randomCustomer() {
         List<String> customers = Arrays.asList("osito", "oscuro", "zorro");
@@ -33,26 +32,27 @@ public class ExactlyOnceProducer
     public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
     private static String generateMessage(String customer) {
-        Random r = new Random();
-
-        Map<String, Object> data = new HashMap<>();
-        Integer amount = r.nextInt(100) + 1;
-
-        data.put("name", customer);
-        data.put("amount", amount);
-        data.put("time", DATE_FORMAT.format(new Date()));
-
-        return SimpleJson.serialize(data);
+        Integer amount = ThreadLocalRandom.current().nextInt(100) + 1;
+        ObjectNode record = JsonNodeFactory.instance.objectNode();
+        record.put("name", customer);
+        record.put("amount", amount);
+        record.put("time", new Date().getTime());
+        return record.toString();
     }
 
     public static void main(String[] args)
     {
         Properties props = new Properties();
-        props.put("bootstrap.servers", EnvUtils.getEnvVar("BOOTSTRAP_SERVER"));
-        props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-        props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, EnvUtils.getEnvVar("BOOTSTRAP_SERVER"));
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringSerializer");
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringSerializer");
+        props.put(ProducerConfig.ACKS_CONFIG, "all");
+        props.put(ProducerConfig.RETRIES_CONFIG, "3");
+        props.put(ProducerConfig.LINGER_MS_CONFIG, "1");
+        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true");
 
         KafkaProducer<String, String> producer = new KafkaProducer<>(props);
+
         try {
 
             while(true) {
@@ -65,7 +65,7 @@ public class ExactlyOnceProducer
                 producer.send(message);
                 try
                 {
-                    Thread.sleep(100);
+                    Thread.sleep(5000);
                 }
                 catch (InterruptedException e)
                 {
