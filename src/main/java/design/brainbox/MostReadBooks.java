@@ -23,19 +23,10 @@ public class MostReadBooks extends KafkaApp
     {
         KGroupedStream<String, String> bookRatings = builder.stream("book-rating-user-actions",
                 Consumed.with(Serdes.String(), Serdes.String()))
-                .selectKey((key, value) -> {
-                    try
-                    {
-                        SimpleJson data = SimpleJson.parse(value);
-                        logger.info(data.toString());
-                        return data.getString("book_id");
-                    }
-                    catch (Exception e)
-                    {
-                        logger.error("womp", e);
-                        return null;
-                    }
-                }).groupByKey();
+                .selectKey((key, value) -> SimpleJson.parse(value).getString("book_id"))
+                .groupByKey();
+
+
 
         // ruby client can only handle strings
         bookRatings.count().mapValues((readOnlyKey, value) -> value.toString())

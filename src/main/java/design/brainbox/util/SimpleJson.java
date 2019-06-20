@@ -1,5 +1,6 @@
 package design.brainbox.util;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -9,17 +10,29 @@ import java.util.Map;
 public class SimpleJson
 {
     private final Map<String, Object> data;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public SimpleJson(Map<String, Object> data)
     {
         this.data = data;
     }
 
-    public static SimpleJson parse(String json) {
-        ObjectMapper mapper = new ObjectMapper();
+    public static String serialize(Map<String, Object> data) {
         try
         {
-            Map<String, Object> data = mapper.readValue(json, new TypeReference<Map<String, Object>>(){});
+            return MAPPER.writeValueAsString(data);
+        }
+        catch (JsonProcessingException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static SimpleJson parse(String json) {
+
+        try
+        {
+            Map<String, Object> data = MAPPER.readValue(json, new TypeReference<Map<String, Object>>(){});
             return new SimpleJson(data);
         }
         catch (IOException e)
