@@ -9,7 +9,7 @@ import org.apache.kafka.streams.kstream.Produced;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MostReadBooks extends KafkaApp
+public class MostReadBooks extends KafkaStreamsApp
 {
     private static final Logger logger = LoggerFactory.getLogger(MostReadBooks.class);
 

@@ -13,9 +13,9 @@ import org.slf4j.LoggerFactory;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 
-public abstract class KafkaApp
+public abstract class KafkaStreamsApp
 {
-    private static final Logger logger = LoggerFactory.getLogger(KafkaApp.class);
+    private static final Logger logger = LoggerFactory.getLogger(KafkaStreamsApp.class);
 
     public void start() {
         Properties config = new Properties();

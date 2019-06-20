@@ -5,7 +5,6 @@ import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.kstream.Consumed;
-import org.apache.kafka.streams.kstream.KGroupedStream;
 import org.apache.kafka.streams.kstream.KGroupedTable;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
@@ -19,7 +18,7 @@ import java.util.Arrays;
 
 import static design.brainbox.util.SimpleJson.parse;
 
-public class RatingStats extends KafkaApp
+public class RatingStats extends KafkaStreamsApp
 {
 
     private static final Logger logger = LoggerFactory.getLogger(RatingStats.class);
