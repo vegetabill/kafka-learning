@@ -9,12 +9,19 @@ import org.apache.kafka.streams.kstream.KGroupedTable;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.Printed;
 import org.apache.kafka.streams.kstream.Produced;
 import org.apache.kafka.streams.kstream.Serialized;
+import org.apache.kafka.streams.kstream.TimeWindows;
+import org.apache.kafka.streams.kstream.Windowed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.Date;
 
 import static design.brainbox.util.SimpleJson.parse;
 
@@ -43,6 +50,14 @@ public class RatingStats extends KafkaStreamsApp
         return result;
     }
 
+    private static final DateFormat TIME_ONLY = new SimpleDateFormat("HH:mm:ss");
+    public String friendlyWindowString(Windowed<String> w) {
+
+        String start = TIME_ONLY.format(new Date(w.window().start()));
+        String end = TIME_ONLY.format(new Date(w.window().end()));
+        return String.format("[%s:%s/%s]", w.key(), start, end);
+    }
+
     @Override
     protected void buildTopology(StreamsBuilder builder)
     {
@@ -66,8 +81,35 @@ public class RatingStats extends KafkaStreamsApp
                 })
                 .to("user-ratings");
 
+        KTable<Windowed<String>, Long> ratingCountsPerWindow = userBookRatingActions
+                .selectKey((key, value) -> {
+                    {
+                        Object rating = SimpleJson.parse(value).getRaw("rating");
+                        if (rating == null)
+                        {
+                            return "0";
+                        }
+                        return rating.toString();
+                    }
+                })
+                .groupByKey()
+                .windowedBy(TimeWindows.of(Duration.ofSeconds(30).toMillis()))
+                .count();
+
+        ratingCountsPerWindow
+                .toStream()
+                .map((windowed, value) -> KeyValue.pair(friendlyWindowString(windowed), value.toString()))
+                .to("rating-counts-windowed");
+
         KTable<String, String> currentRatings = builder.table("user-ratings",
                 Consumed.with(Serdes.String(), Serdes.String()));
+
+        currentRatings
+                .groupBy((key, value) -> KeyValue.pair(parse(value).getString("rating"), value))
+                .count()
+                .toStream()
+                .map((key, value) -> KeyValue.pair(key, value.toString()))
+                .to("all-ratings-distribution");
 
         KGroupedTable<String, String> currentUserRatings = currentRatings.groupBy((key, value) -> KeyValue.pair(parse(value).getString("user_id"), value),
                 Serialized.with(Serdes.String(), Serdes.String()));
@@ -87,7 +129,6 @@ public class RatingStats extends KafkaStreamsApp
         userRatingSums.toStream()
                 .mapValues((readOnlyKey, value) -> value.toString())
                 .to("user-rating-sums", Produced.with(Serdes.String(), Serdes.String()));
-
 
         KTable<String, Float> userRatingAverages
                 = userRatingSums.join(userRatingCounts, this::friendlyDivision);
